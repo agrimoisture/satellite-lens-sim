@@ -40,7 +40,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 <div class="panel" id="right">
  <div class="ctl"><label>光學系統切換</label><div class="seg" id="mode">
   <button data-m="1">單一透鏡</button><button data-m="2">兩片透鏡</button><button data-m="3" class="on">反射式 卡賽格林</button></div></div>
- <div class="ctl"><label>階段一：調整鏡距 <span id="sv"></span></label><input id="s" type="range" min="-100" max="100" step="1" value="40"></div>
+ <div class="ctl"><label><span id="sl">階段一：移動次鏡位置</span> <span id="sv"></span></label><input id="s" type="range" min="-100" max="100" step="1" value="40"></div>
  <div class="ctl"><label>階段二：溫度調焦 <span id="tv"></span></label><input id="t" type="range" min="10" max="45" step="0.1" value="20"></div>
  <button class="small" id="best">回到參考設定（鏡距 0、27.9°C）</button>
  <table style="margin-top:10px">
@@ -59,6 +59,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 <p><b>2. 為什麼會模糊？</b> 平行光經鏡頭匯聚成一點（焦點）。若感測器不在焦點上，光會攤成一個「模糊圓」，直徑 ≈ 離焦量 × 口徑 ÷ 焦距（≈ 離焦量 ÷ 9.9）。焦深 ±2λ(F#)² ≈ ±108 µm 內看起來仍算清楚。<span class="tag inf">推論</span>（λ=0.55 µm、F#≈9.9 為推算）</p>
 <p><b>3. 為什麼模糊長這樣？</b> 本模擬不是用一般「高斯模糊」，而是把畫面每一點換成真實的離焦光斑（點擴散函數，PSF）再疊加（卷積）：透鏡系統是<b>均勻圓盤</b>；卡賽格林因次鏡擋住中央，光斑是<b>中空的圓環</b>（遮擋比 33% 為<span class="tag asm">假設值</span>）。再加上一個小的繞射核心（艾里斑，直徑約 2.44λF# ≈ 13 µm）。所以路燈這類亮點離焦時會變成「甜甜圈」形狀的光圈（散景），和真實反射式望遠鏡一樣。</p>
 <p><b>4. 三種光學系統</b>　單一透鏡：移動鏡距 1 µm，焦點就移 1 µm。兩片透鏡：1/f = 1/f₁ + 1/f₂ − d/(f₁f₂)，改變間距 d 會改變焦距與焦點位置。卡賽格林（福衛八號是 RC 式，屬此類）：主鏡＋次鏡，次鏡移一點點，焦點移動約 (m²+1) 倍（本模擬 m=4，約 17 倍），所以只要移動次鏡「數十微米」就能對焦。<span class="tag asm">主鏡焦距 981.75 mm、主次鏡距 750 mm、m=4 為假設值</span></p>
+<p><b>對焦方式</b>：感測器固定不動，靠移動鏡片/次鏡位置來對焦（福衛八號是遙控移動次鏡）。光路圖中虛線是參考位置，黃色箭頭是移動方向與距離（位移已誇張放大）。溫度變化造成的熱膨脹也會改變鏡距，所以次鏡也會隨溫度移動。</p>
 <p><b>5. 溫度調焦</b>　支撐結構熱脹冷縮：δL = α × L × ΔT。福衛八號受訪人員表示入軌後調到 <b>27.9°C</b> 影像最好<span class="tag off">TASA 受訪說法</span>。本模擬設定 27.9°C、鏡距 0 時恰好在焦點上。α = 2×10⁻⁶ /K、L = 750 mm 為<span class="tag asm">假設值</span>，選來讓效果看得見。</p>
 <p><b>簡化</b>：薄透鏡/薄反射鏡近似、只看軸上單一波長、不含像差與 4 片修正透鏡、光路圖比例誇張；畫面每 1 格約對應 1 個感測器像素。</p>
 </div><button class="small" onclick="dlg.close()">關閉</button></dialog>
@@ -122,7 +123,7 @@ function render(Rpx){
 // ===== 光路圖 =====
 const rc=document.getElementById('ray'),rx=rc.getContext('2d');
 let lastDef=0;function fitRay(){const r=rc.getBoundingClientRect(),dp=Math.min(2,devicePixelRatio||1);const W2=Math.round(r.width*dp),H2=Math.round(r.height*dp);if(W2>50&&H2>50&&(rc.width!==W2||rc.height!==H2)){rc.width=W2;rc.height=H2;}}
-function drawRays(defocus){lastDef=defocus;fitRay();
+let lastMv=0;function drawRays(defocus,mv){if(mv===undefined)mv=lastMv;lastMv=mv;lastDef=defocus;fitRay();
  const w=rc.width,h=rc.height,cy=h/2;rx.clearRect(0,0,w,h);const fs=Math.max(16,Math.round(h/16));rx.font="bold "+fs+"px sans-serif";
  const sensorX=w*.86,EX=600*w/960;// 離焦放大倍率（每 mm → 像素）
  let fx=sensorX+Math.max(-w/6,Math.min(w/6,defocus*EX)); // 焦點位置
@@ -131,13 +132,17 @@ function drawRays(defocus){lastDef=defocus;fitRay();
  rx.lineWidth=1.6;const line=(p)=>{rx.beginPath();rx.moveTo(p[0][0],p[0][1]);for(const q of p.slice(1))rx.lineTo(q[0],q[1]);rx.stroke();};
  const ext=(x1,y1,x2,y2,xe)=>[xe,y1+(y2-y1)*(xe-x1)/(x2-x1)];
  const xEnd=Math.max(fx,sensorX)+40;
- if(mode===1){const L=w*.25;rx.strokeStyle='#8cf';rx.lineWidth=4;rx.beginPath();rx.ellipse(L,cy,8,h*.42,0,0,7);rx.stroke();rx.lineWidth=1.6;
+ const MS=w*.16/(mode===1?1.55:.13);
+ const ghost=(x0,x1,y,name)=>{rx.save();rx.setLineDash([5,5]);rx.strokeStyle='rgba(200,220,255,.45)';rx.lineWidth=2;rx.beginPath();rx.moveTo(x0,cy-h*.3);rx.lineTo(x0,cy+h*.3);rx.stroke();rx.restore();
+  const um=Math.round(mv*1000);if(Math.abs(x1-x0)>2){rx.strokeStyle='#ff6';rx.fillStyle='#ff6';rx.lineWidth=3;rx.beginPath();rx.moveTo(x0,y);rx.lineTo(x1,y);rx.stroke();const dir=Math.sign(x1-x0);rx.beginPath();rx.moveTo(x1,y);rx.lineTo(x1-dir*12,y-7);rx.lineTo(x1-dir*12,y+7);rx.fill();}
+  rx.fillStyle='#ff6';rx.fillText(name+' 移動 '+(um>0?'+':'')+um+' µm',Math.max(4,Math.min(w-260,x1-80)),y-10);};
+ if(mode===1){const L0=w*.25,L=L0-mv*MS;ghost(L0,L,cy-h*.36,'透鏡');rx.strokeStyle='#8cf';rx.lineWidth=4;rx.beginPath();rx.ellipse(L,cy,8,h*.42,0,0,7);rx.stroke();rx.lineWidth=1.6;
   for(const y of ys){rx.strokeStyle=col(y);line([[10,cy+y],[L,cy+y],[fx,cy],ext(L,cy+y,fx,cy,xEnd)]);} }
- else if(mode===2){const L1=w*.15,L2=w*.45,k=.55;rx.strokeStyle='#8cf';rx.lineWidth=4;rx.beginPath();rx.ellipse(L1,cy,8,h*.42,0,0,7);rx.stroke();
+ else if(mode===2){const L1=w*.15,L20=w*.45,L2=L20+mv*MS,k=.55;ghost(L20,L2,cy-h*.36,'透鏡2');rx.strokeStyle='#8cf';rx.lineWidth=4;rx.beginPath();rx.ellipse(L1,cy,8,h*.42,0,0,7);rx.stroke();
   rx.strokeStyle='#f8c';rx.beginPath();rx.ellipse(L2,cy,6,h*.26,0,0,7);rx.stroke();rx.lineWidth=1.6;
   for(const y of ys){rx.strokeStyle=col(y);line([[10,cy+y],[L1,cy+y],[L2,cy+y*k],[fx,cy],ext(L2,cy+y*k,fx,cy,xEnd)]);}
   rx.fillStyle='#cde';rx.fillText('透鏡1',L1-12,h-8);rx.fillText('透鏡2',L2-12,h-8);}
- else{const P=w*.62,S=w*.3,k=.3;// 主鏡 P（凹面），次鏡 S
+ else{const P=w*.62,S0=w*.3,S=S0-mv*MS,k=.3;ghost(S0,S,cy-h*.3,'次鏡');// 主鏡 P（凹面），次鏡 S
   rx.strokeStyle='#8cf';rx.lineWidth=5;for(const sgn of[-1,1]){rx.beginPath();rx.moveTo(P-14,cy+sgn*h*.44);rx.quadraticCurveTo(P,cy+sgn*h*.25,P,cy+sgn*h*.05);rx.stroke();}
   rx.strokeStyle='#f8c';rx.beginPath();rx.moveTo(S+6,cy-h*.14);rx.quadraticCurveTo(S,cy,S+6,cy+h*.14);rx.stroke();
   rx.fillStyle='rgba(120,120,140,.25)';rx.fillRect(0,cy-h*.14,S,h*.28);rx.lineWidth=1.6;
@@ -146,6 +151,7 @@ function drawRays(defocus){lastDef=defocus;fitRay();
  rx.strokeStyle='#5f5';rx.lineWidth=3;rx.beginPath();rx.moveTo(sensorX,cy-h*.2);rx.lineTo(sensorX,cy+h*.2);rx.stroke();
  rx.fillStyle='#5f5';rx.fillText('感測器',sensorX-20,cy-h*.22);
  rx.fillStyle='#f55';rx.beginPath();rx.arc(fx,cy,5,0,7);rx.fill();rx.fillText('焦點',fx-14,cy+h*.27);
+ 
  rx.fillStyle='#cde';rx.fillText('← 來自遠方地面的平行光',10,fs+6);
 }
 // ===== UI =====
@@ -158,11 +164,12 @@ function update(){if(pending)return;pending=true;requestAnimationFrame(()=>{pend
  $('rd').textContent=(o.defocus*1000).toFixed(0)+' µm'+(dz<1?'':o.defocus>0?'（焦點在後）':'（焦點在前）');
  $('rb').textContent=blur.toFixed(1)+' µm（'+(blur/7).toFixed(1)+' 像素）';$('rl').textContent=(o.dL*1000).toFixed(2)+' µm';
  const st=$('status');if(dz<=108){st.textContent='✅ 清晰';st.style.background='#1f6f3f';}else if(dz<=324){st.textContent='⚠️ 略模糊';st.style.background='#8a6d12';}else{st.textContent='❌ 模糊';st.style.background='#8a1f1f';}
- render(blur/2/7);drawRays(o.defocus);});}
+ render(blur/2/7);drawRays(o.defocus,s/1000+o.dL);});}
+const SL={1:'階段一：移動透鏡位置',2:'階段一：移動第二片透鏡',3:'階段一：移動次鏡位置'};
 $('s').oninput=$('t').oninput=update;
 $('best').onclick=()=>{$('s').value=0;$('t').value=TREF;update();};
 document.querySelectorAll('#mode button').forEach(b=>b.onclick=()=>{mode=+b.dataset.m;document.querySelectorAll('#mode button').forEach(x=>x.classList.toggle('on',x===b));
- $('s').min=mode===1?-1500:-100;$('s').max=mode===1?1500:100;$('s').step=mode===1?10:1;update();});
+ $('sl').textContent=SL[mode];$('s').min=mode===1?-1500:-100;$('s').max=mode===1?1500:100;$('s').step=mode===1?10:1;update();});
 addEventListener("resize",()=>drawRays(lastDef));$("help").onclick=()=>$("dlg").showModal();
 update();
 </script></body></html>
