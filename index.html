@@ -1,0 +1,168 @@
+<!doctype html><html lang="zh-Hant-TW"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>衛星望遠鏡鏡頭調焦模擬器</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;background:#0f1724;color:#e8eef7}
+header{padding:10px 14px;background:#16233a}h1{font-size:1.15rem;margin:0}header p{margin:2px 0 0;font-size:.8rem;color:#9fb3cf}
+main{display:grid;grid-template-columns:1fr 340px;gap:12px;padding:12px;max-width:1280px;margin:auto}
+.panel{background:#16233a;border-radius:10px;padding:10px}.panel h2{font-size:.95rem;margin:0 0 6px;color:#ffd27a}
+canvas{width:100%;display:block;border-radius:6px;background:#000}
+#img{aspect-ratio:16/10;image-rendering:auto}#ray{aspect-ratio:16/7;background:#0b1220}
+.ctl{margin-bottom:12px}.ctl label{display:flex;justify-content:space-between;font-size:.9rem}input[type=range]{width:100%;height:28px}
+.seg{display:flex;gap:4px}.seg button{flex:1;padding:8px 2px;border:1px solid #3a557f;background:#0f1724;color:#cfe0ff;border-radius:6px;font-size:.85rem}
+.seg button.on{background:#2f6fd0;color:#fff}
+table{width:100%;font-size:.88rem;border-collapse:collapse}td{padding:3px 2px;border-bottom:1px solid #253756}td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.tag{font-size:.7rem;padding:1px 4px;border-radius:4px;margin-left:3px}.off{background:#1f6f3f}.asm{background:#8a4b12}.inf{background:#3d4f8a}
+#status{font-size:1.2rem;font-weight:bold;text-align:center;padding:6px;border-radius:6px;margin-top:6px}
+.note{font-size:.75rem;color:#9fb3cf;margin:4px 0 0}
+details{grid-column:1/-1}summary{cursor:pointer;font-weight:bold;color:#ffd27a}details div{font-size:.9rem;line-height:1.6}
+button.small{padding:6px 10px;border-radius:6px;border:1px solid #3a557f;background:#0f1724;color:#cfe0ff}
+@media(max-width:820px){main{grid-template-columns:1fr}#ray{aspect-ratio:4/3}}
+
+@media(min-width:821px){html,body{height:100%;overflow:hidden}body{display:flex;flex-direction:column}
+main{flex:1;min-height:0;max-width:none;width:100%;grid-template-columns:minmax(0,1fr) clamp(300px,26vw,400px)}
+#left{display:flex;flex-direction:column;gap:8px;min-height:0}#left .panel{display:flex;flex-direction:column;min-height:0}
+#imgp{flex:0 0 auto}#img{height:34vh;width:auto;max-width:100%;margin:auto}#rayp{flex:1}#ray{flex:1;min-height:0;height:100%;aspect-ratio:auto}
+#right{overflow:auto}.ctl{margin-bottom:6px}td{padding:2px}}
+@media(min-width:1600px){body{font-size:18px}h1{font-size:1.4rem!important}}
+header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+dialog{max-width:760px;width:92vw;max-height:85vh;background:#16233a;color:#e8eef7;border:1px solid #3a557f;border-radius:10px;line-height:1.6}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+</style><link rel="manifest" href="manifest.json"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0f1a2b"></head><body>
+<header><div><h1>🛰️ 衛星望遠鏡鏡頭調焦模擬器</h1><p>以福衛八號（FORMOSAT-8）為例｜上：成像　下：光路圖</p></div><button class="small" id="help">📘 說明（給老師）</button></header>
+<main>
+<div id="left">
+ <div class="panel" id="imgp"><h2>成像（感測器看到的畫面）</h2><canvas id="img" width="256" height="160"></canvas>
+ <p class="note">模糊以真實離焦的點擴散函數（PSF）卷積計算：圓盤/環形光斑＋繞射核心。</p></div>
+ <div class="panel" id="rayp"><h2>光路圖</h2><canvas id="ray" width="960" height="420"></canvas>
+ <p class="note">⚠ 光路圖比例誇張放大（離焦量放大顯示），僅示意。</p></div>
+</div>
+<div class="panel" id="right">
+ <div class="ctl"><label>光學系統切換</label><div class="seg" id="mode">
+  <button data-m="1">單一透鏡</button><button data-m="2">兩片透鏡</button><button data-m="3" class="on">反射式 卡賽格林</button></div></div>
+ <div class="ctl"><label>階段一：調整鏡距 <span id="sv"></span></label><input id="s" type="range" min="-100" max="100" step="1" value="40"></div>
+ <div class="ctl"><label>階段二：溫度調焦 <span id="tv"></span></label><input id="t" type="range" min="10" max="45" step="0.1" value="20"></div>
+ <button class="small" id="best">回到參考設定（鏡距 0、27.9°C）</button>
+ <table style="margin-top:10px">
+  <tr><td>有效焦距 f</td><td id="rf"></td></tr>
+  <tr><td>解析度 GSD<span class="tag off">官方≈1.00 m</span></td><td id="rg"></td></tr>
+  <tr><td>離焦量</td><td id="rd"></td></tr>
+  <tr><td>模糊圓直徑</td><td id="rb"></td></tr>
+  <tr><td>焦深<span class="tag inf">推論</span></td><td>±108 µm</td></tr>
+  <tr><td>鏡距變化 δL</td><td id="rl"></td></tr>
+ </table>
+ <div id="status"></div>
+ <p class="note">GSD = 像素 × 軌道高度 ÷ 焦距；像素 7 µm、軌道 561 km、口徑 396 mm、焦距 3927 mm<span class="tag off">官方，國研院</span></p>
+</div>
+<dialog id="dlg"><h2 style="color:#ffd27a;margin-top:0">📘 說明（給老師）</h2><div>
+<p><b>1. 焦距怎麼決定？</b> 衛星上一個像素「看到」地面多大，靠相似三角形：<b>GSD = 像素大小 × 軌道高度 ÷ 焦距</b>。福衛八號 7 µm × 561 km ÷ 3.927 m ≈ 1.00 m。<span class="tag off">官方</span>（國研院公開規格：口徑 396 mm、焦距 3927 mm、像素 7 µm、軌道 561 km、解析度 1 m）</p>
+<p><b>2. 為什麼會模糊？</b> 平行光經鏡頭匯聚成一點（焦點）。若感測器不在焦點上，光會攤成一個「模糊圓」，直徑 ≈ 離焦量 × 口徑 ÷ 焦距（≈ 離焦量 ÷ 9.9）。焦深 ±2λ(F#)² ≈ ±108 µm 內看起來仍算清楚。<span class="tag inf">推論</span>（λ=0.55 µm、F#≈9.9 為推算）</p>
+<p><b>3. 為什麼模糊長這樣？</b> 本模擬不是用一般「高斯模糊」，而是把畫面每一點換成真實的離焦光斑（點擴散函數，PSF）再疊加（卷積）：透鏡系統是<b>均勻圓盤</b>；卡賽格林因次鏡擋住中央，光斑是<b>中空的圓環</b>（遮擋比 33% 為<span class="tag asm">假設值</span>）。再加上一個小的繞射核心（艾里斑，直徑約 2.44λF# ≈ 13 µm）。所以路燈這類亮點離焦時會變成「甜甜圈」形狀的光圈（散景），和真實反射式望遠鏡一樣。</p>
+<p><b>4. 三種光學系統</b>　單一透鏡：移動鏡距 1 µm，焦點就移 1 µm。兩片透鏡：1/f = 1/f₁ + 1/f₂ − d/(f₁f₂)，改變間距 d 會改變焦距與焦點位置。卡賽格林（福衛八號是 RC 式，屬此類）：主鏡＋次鏡，次鏡移一點點，焦點移動約 (m²+1) 倍（本模擬 m=4，約 17 倍），所以只要移動次鏡「數十微米」就能對焦。<span class="tag asm">主鏡焦距 981.75 mm、主次鏡距 750 mm、m=4 為假設值</span></p>
+<p><b>5. 溫度調焦</b>　支撐結構熱脹冷縮：δL = α × L × ΔT。福衛八號受訪人員表示入軌後調到 <b>27.9°C</b> 影像最好<span class="tag off">TASA 受訪說法</span>。本模擬設定 27.9°C、鏡距 0 時恰好在焦點上。α = 2×10⁻⁶ /K、L = 750 mm 為<span class="tag asm">假設值</span>，選來讓效果看得見。</p>
+<p><b>簡化</b>：薄透鏡/薄反射鏡近似、只看軸上單一波長、不含像差與 4 片修正透鏡、光路圖比例誇張；畫面每 1 格約對應 1 個感測器像素。</p>
+</div><button class="small" onclick="dlg.close()">關閉</button></dialog>
+</main>
+<script>
+// ===== 常數 =====
+const D=396, FT=3927, PIX=0.007, H=561e3, TREF=27.9, ALPHA=2e-6, LAM=0.00055, OBS=0.33;
+let mode=3;
+// 兩元件系統：回傳 f, BFD（自第二元件量）
+function two(f1,f2,d){const f=1/(1/f1+1/f2-d/(f1*f2));return{f,bfd:f*(f1-d)/f1};}
+// 由 f1, d0, f 求 f2（使參考狀態焦距=3927）
+function solveF2(f1,d0){const u=f1-d0,v=FT/f1*u;return 1/(1/v-1/u);}
+const SYS={2:{f1:1963.5,d0:1000,L:1000},3:{f1:981.75,d0:750,L:750}};
+for(const k in SYS){SYS[k].f2=solveF2(SYS[k].f1,SYS[k].d0);const r=two(SYS[k].f1,SYS[k].f2,SYS[k].d0);SYS[k].sensor=SYS[k].d0+r.bfd;}
+function optics(sUm,T){
+ if(mode===1){const dL=ALPHA*FT*(T-TREF);const shift=sUm/1000+dL;return{f:FT,defocus:-shift,dL};}
+ const S=SYS[mode],dL=ALPHA*S.L*(T-TREF),d=S.d0+sUm/1000+dL,r=two(S.f1,S.f2,d);
+ return{f:r.f,defocus:(d+r.bfd)-S.sensor,dL,d};// >0：焦點在感測器之後
+}
+// ===== 場景（改自 redhouse.js，放大房子並加亮點路燈） =====
+function drawRedHouse(ctx,w,h){
+ const sky=ctx.createLinearGradient(0,0,0,h*.6);sky.addColorStop(0,'#2f7fe0');sky.addColorStop(1,'#bfe3ff');ctx.fillStyle=sky;ctx.fillRect(0,0,w,h);
+ const hz=h*.6,g=ctx.createLinearGradient(0,hz,0,h);g.addColorStop(0,'#7fbf4a');g.addColorStop(1,'#3e8a2a');ctx.fillStyle=g;ctx.fillRect(0,hz,w,h-hz);
+ const cx=w/2;ctx.fillStyle='#d9c79a';ctx.beginPath();ctx.moveTo(cx-w*.3,h);ctx.lineTo(cx+w*.3,h);ctx.lineTo(cx+w*.02,hz);ctx.lineTo(cx-w*.02,hz);ctx.fill();
+ ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.setLineDash([6,6]);ctx.beginPath();ctx.moveTo(cx,h);ctx.lineTo(cx,hz+3);ctx.stroke();ctx.setLineDash([]);
+ const s=w*.16,bx=cx-s/2,by=hz-s*.7;
+ ctx.fillStyle='#f4ead8';ctx.fillRect(bx,by,s,s*.7);
+ ctx.fillStyle='#d01818';ctx.beginPath();ctx.moveTo(bx-s*.15,by);ctx.lineTo(cx,by-s*.55);ctx.lineTo(bx+s*1.15,by);ctx.fill();
+ ctx.fillStyle='#6b3a1e';ctx.fillRect(cx-s*.1,by+s*.3,s*.2,s*.4);
+ ctx.fillStyle='#3a6ea5';ctx.fillRect(bx+s*.1,by+s*.15,s*.2,s*.18);ctx.fillRect(bx+s*.7,by+s*.15,s*.2,s*.18);
+ ctx.fillStyle='rgba(255,255,255,.95)';[[.18,.15],[.72,.12]].forEach(([x,y])=>{for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(w*x+i*w*.035,h*y,w*.03,0,7);ctx.fill();}});
+ ctx.strokeStyle='#333';ctx.lineWidth=1;[[.22,.82],[.78,.82]].forEach(([x,y])=>{ctx.beginPath();ctx.moveTo(w*x,h*y);ctx.lineTo(w*x,h*y-22);ctx.stroke();});
+}
+const LAMPS=[[.22,.82,22],[.78,.82,22]]; // 高亮度點光源（線性光強）
+const W=256,Hh=160,base=new Float32Array(W*Hh*3);
+(function(){const c=document.createElement('canvas');c.width=W;c.height=Hh;const x=c.getContext('2d');drawRedHouse(x,W,Hh);
+ const d=x.getImageData(0,0,W,Hh).data;for(let i=0;i<W*Hh;i++)for(let k=0;k<3;k++)base[i*3+k]=Math.pow(d[i*4+k]/255,2.2);
+ for(const[lx,ly,dy]of LAMPS){const px=Math.round(W*lx),py=Math.round(Hh*ly-dy);{const i=(py*W+px)*3;base[i]=70;base[i+1]=62;base[i+2]=40;}}
+})();
+// ===== PSF：環形/圓盤（超取樣反鋸齒）＋艾里核心 =====
+function makePSF(Rpx,eps){
+ const rA=1.22*LAM*(FT/D)/PIX;// 艾里第一暗環半徑（像素）≈0.94
+ const R=Math.min(Rpx,24),n=Math.ceil(Math.max(R,rA*2))+1,list=[];let sum=0;
+ const a=rA*rA/(R*R+rA*rA);
+ for(let y=-n;y<=n;y++)for(let x=-n;x<=n;x++){
+  let disk=0;if(R>0.3){let c=0;for(let sy=0;sy<4;sy++)for(let sx=0;sx<4;sx++){const r=Math.hypot(x+(sx+.5)/4-.5,y+(sy+.5)/4-.5);if(r<=R&&r>=eps*R)c++;}disk=c/16/(Math.PI*R*R*(1-eps*eps));}
+  const r=Math.hypot(x,y),q=3.8317*r/rA;let j=q<1e-6?1:2*besselJ1(q)/q;let airy=j*j*Math.PI*0.1/(rA*rA);
+  const v=R>0.3?(1-a)*disk+a*airy:airy;if(v>1e-5){list.push(x,y,v);sum+=v;}
+ }
+ for(let i=2;i<list.length;i+=3)list[i]/=sum;return list;
+}
+function besselJ1(x){let s=0,t=x/2;for(let k=0;k<20;k++){s+=t;t*=-(x*x/4)/((k+1)*(k+2));}return s;}
+const ictx=document.getElementById('img').getContext('2d'),out=ictx.createImageData(W,Hh);
+function render(Rpx){
+ const eps=mode===3?OBS:0,psf=makePSF(Rpx,eps),o=out.data,N=psf.length;
+ for(let y=0;y<Hh;y++)for(let x=0;x<W;x++){let r=0,g=0,b=0;
+  for(let k=0;k<N;k+=3){let xx=x+psf[k],yy=y+psf[k+1];xx=xx<0?0:xx>=W?W-1:xx;yy=yy<0?0:yy>=Hh?Hh-1:yy;const i=(yy*W+xx)*3,w=psf[k+2];r+=base[i]*w;g+=base[i+1]*w;b+=base[i+2]*w;}
+  const j=(y*W+x)*4;o[j]=255*Math.pow(Math.min(1,r),1/2.2);o[j+1]=255*Math.pow(Math.min(1,g),1/2.2);o[j+2]=255*Math.pow(Math.min(1,b),1/2.2);o[j+3]=255;}
+ ictx.putImageData(out,0,0);
+}
+// ===== 光路圖 =====
+const rc=document.getElementById('ray'),rx=rc.getContext('2d');
+let lastDef=0;function fitRay(){const r=rc.getBoundingClientRect(),dp=Math.min(2,devicePixelRatio||1);const W2=Math.round(r.width*dp),H2=Math.round(r.height*dp);if(W2>50&&H2>50&&(rc.width!==W2||rc.height!==H2)){rc.width=W2;rc.height=H2;}}
+function drawRays(defocus){lastDef=defocus;fitRay();
+ const w=rc.width,h=rc.height,cy=h/2;rx.clearRect(0,0,w,h);const fs=Math.max(16,Math.round(h/16));rx.font="bold "+fs+"px sans-serif";
+ const sensorX=w*.86,EX=600*w/960;// 離焦放大倍率（每 mm → 像素）
+ let fx=sensorX+Math.max(-w/6,Math.min(w/6,defocus*EX)); // 焦點位置
+ rx.strokeStyle='#445';rx.setLineDash([4,6]);rx.beginPath();rx.moveTo(0,cy);rx.lineTo(w,cy);rx.stroke();rx.setLineDash([]);
+ const ys=[-1,-.75,-.5,-.3,.3,.5,.75,1].map(v=>v*h*.38),col=y=>Math.abs(y)>h*.3?'#ffb347':'#ffe27a';
+ rx.lineWidth=1.6;const line=(p)=>{rx.beginPath();rx.moveTo(p[0][0],p[0][1]);for(const q of p.slice(1))rx.lineTo(q[0],q[1]);rx.stroke();};
+ const ext=(x1,y1,x2,y2,xe)=>[xe,y1+(y2-y1)*(xe-x1)/(x2-x1)];
+ const xEnd=Math.max(fx,sensorX)+40;
+ if(mode===1){const L=w*.25;rx.strokeStyle='#8cf';rx.lineWidth=4;rx.beginPath();rx.ellipse(L,cy,8,h*.42,0,0,7);rx.stroke();rx.lineWidth=1.6;
+  for(const y of ys){rx.strokeStyle=col(y);line([[10,cy+y],[L,cy+y],[fx,cy],ext(L,cy+y,fx,cy,xEnd)]);} }
+ else if(mode===2){const L1=w*.15,L2=w*.45,k=.55;rx.strokeStyle='#8cf';rx.lineWidth=4;rx.beginPath();rx.ellipse(L1,cy,8,h*.42,0,0,7);rx.stroke();
+  rx.strokeStyle='#f8c';rx.beginPath();rx.ellipse(L2,cy,6,h*.26,0,0,7);rx.stroke();rx.lineWidth=1.6;
+  for(const y of ys){rx.strokeStyle=col(y);line([[10,cy+y],[L1,cy+y],[L2,cy+y*k],[fx,cy],ext(L2,cy+y*k,fx,cy,xEnd)]);}
+  rx.fillStyle='#cde';rx.fillText('透鏡1',L1-12,h-8);rx.fillText('透鏡2',L2-12,h-8);}
+ else{const P=w*.62,S=w*.3,k=.3;// 主鏡 P（凹面），次鏡 S
+  rx.strokeStyle='#8cf';rx.lineWidth=5;for(const sgn of[-1,1]){rx.beginPath();rx.moveTo(P-14,cy+sgn*h*.44);rx.quadraticCurveTo(P,cy+sgn*h*.25,P,cy+sgn*h*.05);rx.stroke();}
+  rx.strokeStyle='#f8c';rx.beginPath();rx.moveTo(S+6,cy-h*.14);rx.quadraticCurveTo(S,cy,S+6,cy+h*.14);rx.stroke();
+  rx.fillStyle='rgba(120,120,140,.25)';rx.fillRect(0,cy-h*.14,S,h*.28);rx.lineWidth=1.6;
+  for(const y of ys){if(Math.abs(y)<h*.14)continue;rx.strokeStyle=col(y);line([[10,cy+y],[P-(Math.abs(y)>h*.3?10:2),cy+y],[S,cy+y*k],[fx,cy],ext(S,cy+y*k,fx,cy,xEnd)]);}
+  rx.fillStyle='#cde';rx.fillText('主鏡（中央開孔）',P-40,h-6);rx.fillText('次鏡',S-10,h-6);rx.fillText('次鏡遮擋（陰影）',8,cy+4);}
+ rx.strokeStyle='#5f5';rx.lineWidth=3;rx.beginPath();rx.moveTo(sensorX,cy-h*.2);rx.lineTo(sensorX,cy+h*.2);rx.stroke();
+ rx.fillStyle='#5f5';rx.fillText('感測器',sensorX-20,cy-h*.22);
+ rx.fillStyle='#f55';rx.beginPath();rx.arc(fx,cy,5,0,7);rx.fill();rx.fillText('焦點',fx-14,cy+h*.27);
+ rx.fillStyle='#cde';rx.fillText('← 來自遠方地面的平行光',10,fs+6);
+}
+// ===== UI =====
+const $=id=>document.getElementById(id);let pending=false;
+function update(){if(pending)return;pending=true;requestAnimationFrame(()=>{pending=false;
+ const s=+$('s').value,T=+$('t').value,o=optics(s,T);
+ $('sv').textContent=(s>0?'+':'')+s+' µm';$('tv').textContent=T.toFixed(1)+' °C';
+ const dz=Math.abs(o.defocus)*1000,blur=dz*D/o.f;
+ $('rf').textContent=o.f.toFixed(1)+' mm';$('rg').textContent=(PIX*1e-3*H/(o.f*1e-3)).toFixed(3)+' m';
+ $('rd').textContent=(o.defocus*1000).toFixed(0)+' µm'+(dz<1?'':o.defocus>0?'（焦點在後）':'（焦點在前）');
+ $('rb').textContent=blur.toFixed(1)+' µm（'+(blur/7).toFixed(1)+' 像素）';$('rl').textContent=(o.dL*1000).toFixed(2)+' µm';
+ const st=$('status');if(dz<=108){st.textContent='✅ 清晰';st.style.background='#1f6f3f';}else if(dz<=324){st.textContent='⚠️ 略模糊';st.style.background='#8a6d12';}else{st.textContent='❌ 模糊';st.style.background='#8a1f1f';}
+ render(blur/2/7);drawRays(o.defocus);});}
+$('s').oninput=$('t').oninput=update;
+$('best').onclick=()=>{$('s').value=0;$('t').value=TREF;update();};
+document.querySelectorAll('#mode button').forEach(b=>b.onclick=()=>{mode=+b.dataset.m;document.querySelectorAll('#mode button').forEach(x=>x.classList.toggle('on',x===b));
+ $('s').min=mode===1?-1500:-100;$('s').max=mode===1?1500:100;$('s').step=mode===1?10:1;update();});
+addEventListener("resize",()=>drawRays(lastDef));$("help").onclick=()=>$("dlg").showModal();
+update();
+</script></body></html>
