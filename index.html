@@ -59,6 +59,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 <p><b>2. 為什麼會模糊？</b> 平行光經鏡頭匯聚成一點（焦點）。若感測器不在焦點上，光會攤成一個「模糊圓」，直徑 ≈ 離焦量 × 口徑 ÷ 焦距（≈ 離焦量 ÷ 9.9）。焦深 ±2λ(F#)² ≈ ±108 µm 內看起來仍算清楚。<span class="tag inf">推論</span>（λ=0.55 µm、F#≈9.9 為推算）</p>
 <p><b>3. 為什麼模糊長這樣？</b> 本模擬不是用一般「高斯模糊」，而是把畫面每一點換成真實的離焦光斑（點擴散函數，PSF）再疊加（卷積）：透鏡系統是<b>均勻圓盤</b>；卡賽格林因次鏡擋住中央，光斑是<b>中空的圓環</b>（遮擋比 33% 為<span class="tag asm">假設值</span>）。再加上一個小的繞射核心（艾里斑，直徑約 2.44λF# ≈ 13 µm）。所以路燈這類亮點離焦時會變成「甜甜圈」形狀的光圈（散景），和真實反射式望遠鏡一樣。</p>
 <p><b>4. 三種光學系統</b>　單一透鏡：移動鏡距 1 µm，焦點就移 1 µm。兩片透鏡：1/f = 1/f₁ + 1/f₂ − d/(f₁f₂)，改變間距 d 會改變焦距與焦點位置。卡賽格林（福衛八號是 RC 式，屬此類）：主鏡＋次鏡，次鏡移一點點，焦點移動約 (m²+1) 倍（本模擬 m=4，約 17 倍），所以只要移動次鏡「數十微米」就能對焦。<span class="tag asm">主鏡焦距 981.75 mm、主次鏡距 750 mm、m=4 為假設值</span></p>
+<p><b>相機、衛星 vs. 眼睛</b>：相機轉對焦環、衛星遙控移動次鏡，都是「移動光學元件」來對焦，鏡片形狀不變；人眼則是靠睫狀肌改變水晶體的厚薄（曲率）來對焦，方式不同。透鏡模式中的「對焦環」就是讓鏡片（兩片透鏡時為第二片，即對焦鏡組）在鏡筒內前後滑動。</p>
 <p><b>對焦方式</b>：感測器固定不動，靠移動鏡片/次鏡位置來對焦（福衛八號是遙控移動次鏡）。光路圖中虛線是參考位置，黃色箭頭是移動方向與距離（位移已誇張放大）。溫度變化造成的熱膨脹也會改變鏡距，所以次鏡也會隨溫度移動。</p>
 <p><b>5. 溫度調焦</b>　支撐結構熱脹冷縮：δL = α × L × ΔT。福衛八號受訪人員表示入軌後調到 <b>27.9°C</b> 影像最好<span class="tag off">TASA 受訪說法</span>。本模擬設定 27.9°C、鏡距 0 時恰好在焦點上。α = 2×10⁻⁶ /K、L = 750 mm 為<span class="tag asm">假設值</span>，選來讓效果看得見。</p>
 <p><b>簡化</b>：薄透鏡/薄反射鏡近似、只看軸上單一波長、不含像差與 4 片修正透鏡、光路圖比例誇張；畫面每 1 格約對應 1 個感測器像素。</p>
@@ -136,9 +137,12 @@ let lastMv=0;function drawRays(defocus,mv){if(mv===undefined)mv=lastMv;lastMv=mv
  const ghost=(x0,x1,y,name)=>{rx.save();rx.setLineDash([5,5]);rx.strokeStyle='rgba(200,220,255,.45)';rx.lineWidth=2;rx.beginPath();rx.moveTo(x0,cy-h*.3);rx.lineTo(x0,cy+h*.3);rx.stroke();rx.restore();
   const um=Math.round(mv*1000);if(Math.abs(x1-x0)>2){rx.strokeStyle='#ff6';rx.fillStyle='#ff6';rx.lineWidth=3;rx.beginPath();rx.moveTo(x0,y);rx.lineTo(x1,y);rx.stroke();const dir=Math.sign(x1-x0);rx.beginPath();rx.moveTo(x1,y);rx.lineTo(x1-dir*12,y-7);rx.lineTo(x1-dir*12,y+7);rx.fill();}
   rx.fillStyle='#ff6';rx.fillText(name+' 移動 '+(um>0?'+':'')+um+' µm',Math.max(4,Math.min(w-260,x1-80)),y-10);};
- if(mode===1){const L0=w*.25,L=L0-mv*MS;ghost(L0,L,cy-h*.36,'透鏡');rx.strokeStyle='#8cf';rx.lineWidth=4;rx.beginPath();rx.ellipse(L,cy,8,h*.42,0,0,7);rx.stroke();rx.lineWidth=1.6;
+ const barrel=(x0,x1,hh,ringX)=>{rx.save();rx.strokeStyle='#7a8aa6';rx.lineWidth=3;rx.fillStyle='rgba(120,140,170,.10)';rx.fillRect(x0,cy-hh,x1-x0,2*hh);rx.beginPath();rx.moveTo(x0,cy-hh);rx.lineTo(x1,cy-hh);rx.moveTo(x0,cy+hh);rx.lineTo(x1,cy+hh);rx.stroke();
+  const rw=w*.07;rx.fillStyle='#3b4a63';rx.fillRect(ringX-rw/2,cy-hh-16,rw,14);rx.strokeStyle='#9fb3cf';rx.lineWidth=1;for(let i=0;i<10;i++){const xx=ringX-rw/2+(i+.5)*rw/10;rx.beginPath();rx.moveTo(xx,cy-hh-15);rx.lineTo(xx,cy-hh-3);rx.stroke();}
+  rx.fillStyle='#cde';rx.fillText('鏡筒（對焦環）',ringX+rw/2+6,cy-hh-2);rx.restore();};
+ if(mode===1){barrel(w*.18,w*.86,h*.44,w*.55);const L0=w*.25,L=L0-mv*MS;ghost(L0,L,cy-h*.28,'透鏡');rx.strokeStyle='#8cf';rx.lineWidth=4;rx.beginPath();rx.ellipse(L,cy,8,h*.42,0,0,7);rx.stroke();rx.lineWidth=1.6;
   for(const y of ys){rx.strokeStyle=col(y);line([[10,cy+y],[L,cy+y],[fx,cy],ext(L,cy+y,fx,cy,xEnd)]);} }
- else if(mode===2){const L1=w*.15,L20=w*.45,L2=L20+mv*MS,k=.55;ghost(L20,L2,cy-h*.36,'透鏡2');rx.strokeStyle='#8cf';rx.lineWidth=4;rx.beginPath();rx.ellipse(L1,cy,8,h*.42,0,0,7);rx.stroke();
+ else if(mode===2){barrel(w*.12,w*.86,h*.44,w*.45);const L1=w*.15,L20=w*.45,L2=L20+mv*MS,k=.55;ghost(L20,L2,cy-h*.36,'透鏡2');rx.strokeStyle='#8cf';rx.lineWidth=4;rx.beginPath();rx.ellipse(L1,cy,8,h*.42,0,0,7);rx.stroke();
   rx.strokeStyle='#f8c';rx.beginPath();rx.ellipse(L2,cy,6,h*.26,0,0,7);rx.stroke();rx.lineWidth=1.6;
   for(const y of ys){rx.strokeStyle=col(y);line([[10,cy+y],[L1,cy+y],[L2,cy+y*k],[fx,cy],ext(L2,cy+y*k,fx,cy,xEnd)]);}
   rx.fillStyle='#cde';rx.fillText('透鏡1',L1-12,h-8);rx.fillText('透鏡2',L2-12,h-8);}
@@ -165,7 +169,7 @@ function update(){if(pending)return;pending=true;requestAnimationFrame(()=>{pend
  $('rb').textContent=blur.toFixed(1)+' µm（'+(blur/7).toFixed(1)+' 像素）';$('rl').textContent=(o.dL*1000).toFixed(2)+' µm';
  const st=$('status');if(dz<=108){st.textContent='✅ 清晰';st.style.background='#1f6f3f';}else if(dz<=324){st.textContent='⚠️ 略模糊';st.style.background='#8a6d12';}else{st.textContent='❌ 模糊';st.style.background='#8a1f1f';}
  render(blur/2/7);drawRays(o.defocus,s/1000+o.dL);});}
-const SL={1:'階段一：移動透鏡位置',2:'階段一：移動第二片透鏡',3:'階段一：移動次鏡位置'};
+const SL={1:'階段一：對焦環（移動鏡片）',2:'階段一：對焦環（移動鏡片）',3:'階段一：移動次鏡位置'};
 $('s').oninput=$('t').oninput=update;
 $('best').onclick=()=>{$('s').value=0;$('t').value=TREF;update();};
 document.querySelectorAll('#mode button').forEach(b=>b.onclick=()=>{mode=+b.dataset.m;document.querySelectorAll('#mode button').forEach(x=>x.classList.toggle('on',x===b));
